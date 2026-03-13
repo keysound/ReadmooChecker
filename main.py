@@ -31,7 +31,7 @@ class ReadmooCheckerApp(tk.Tk):
         self.fetch_button = ttk.Button(control_frame, text="開始擷取書單", command=self.fetch_books)
         self.fetch_button.pack(side=tk.LEFT, padx=5)
 
-        self.status_label = ttk.Label(control_frame, text="點擊按鈕開始")
+        self.status_label = ttk.Label(control_frame, text="點擊按鈕後會開啟瀏覽器讓您登入（支援 QR/Passkey）")
         self.status_label.pack(side=tk.LEFT, padx=5)
 
         # --- Results Frame ---
@@ -56,22 +56,22 @@ class ReadmooCheckerApp(tk.Tk):
         self.fetch_button.config(state=tk.DISABLED)
         for i in self.tree.get_children():
             self.tree.delete(i)
-            
+
         # Run scraping in a separate thread
         thread = threading.Thread(target=self._scrape_data)
         thread.start()
 
     def _scrape_data(self):
-        self.update_status("正在啟動瀏覽器...")
+        self.update_status("正在啟動瀏覽器並登入 Readmoo...")
         logging.info("Starting scrape process...")
-        
+
         try:
             self.scraper_instance = ReadmooScraper(self)
-            
+
             if self.scraper_instance.login():
                 logging.info("Login successful, getting books.")
                 books = self.scraper_instance.get_books()
-                
+
                 # Sort the books by title (default string sort, not by stroke order)
                 self.update_status("正在排序書單...")
                 logging.info("Sorting books by title.")
@@ -83,11 +83,7 @@ class ReadmooCheckerApp(tk.Tk):
                 logging.warning("Login failed or timed out.")
         except Exception as e:
             logging.error(f"An unexpected error occurred in _scrape_data: {e}", exc_info=True)
-            # Handle case where webdriver might not be found
-            if "executable needs to be in PATH" in str(e):
-                self.update_status("錯誤：找不到 msedgedriver.exe！請確認已下載並放在程式資料夾中。", error=True)
-            else:
-                self.update_status(f"發生未預期的錯誤: {e}", error=True)
+            self.update_status(f"發生未預期的錯誤: {e}", error=True)
         finally:
             logging.info("Scrape process finished.")
             if self.scraper_instance:
@@ -99,8 +95,10 @@ class ReadmooCheckerApp(tk.Tk):
     def populate_tree(self, books):
         # This needs to be called from the main thread
         def _insert():
+            logging.info(f"DEBUG: Populating tree with {len(books)} books.")
             logging.info(f"Populating tree with {len(books)} books.")
             for book in books:
+                logging.info(f"DEBUG: Inserting book: {book}")
                 self.tree.insert("", tk.END, values=(book['title'], book['author']))
         self.after(0, _insert)
 
