@@ -45,20 +45,11 @@ class ReadmooScraper:
         self.session.cookies = jar
 
     def check_login(self) -> bool:
-        """Check if login is successful by checking URL or id_token."""
-        # Check for id_token
-        id_token_cookie_name = 'CognitoIdentityServiceProvider.1vo6drk6c6ma7htam496pnrkdr.b724da08-2091-70f4-914c-4dc4806a1e1e.idToken'
-        for c in self.driver.get_cookies():
-            if c["name"] == id_token_cookie_name and c["value"]:
-                logging.info("Found id_token, login successful.")
-                return True
-
-        # Check URL change
+        """Check if login is successful by checking if URL has changed from login page."""
         current_url = self.driver.current_url
-        if "readmoo.com" in current_url and "login" not in current_url:
-            logging.info("URL changed, assuming login successful.")
+        if current_url != self.login_url:
+            logging.info("URL changed from login page, assuming login successful.")
             return True
-
         return False
 
     def login(self) -> bool:
