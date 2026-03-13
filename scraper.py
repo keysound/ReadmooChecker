@@ -44,6 +44,31 @@ class ReadmooScraper:
             jar.set(c["name"], c["value"], domain=c.get("domain"), path=c.get("path"))
         self.session.cookies = jar
 
+    def check_login(self) -> bool:
+        """Check if login is successful by testing API access."""
+        try:
+            # Extract id_token if available
+            id_token = None
+            id_token_cookie_name = 'CognitoIdentityServiceProvider.1vo6drk6c6ma7htam496pnrkdr.b724da08-2091-70f4-914c-4dc4806a1e1e.idToken'
+            for c in self.driver.get_cookies():
+                if c["name"] == id_token_cookie_name:
+                    id_token = c["value"]
+                    break
+
+            headers = self.session.headers.copy()
+            if id_token:
+                headers['Authorization'] = f'Bearer {id_token}'
+
+            test_url = "https://new-read.readmoo.com/api/me/readings?page=1&per_page=1"
+            res = requests.get(test_url, headers=headers, cookies=self.session.cookies, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                if 'included' in data and len(data['included']) > 0:
+                    return True
+        except Exception as e:
+            logging.debug(f"Login check failed: {e}")
+        return False
+
     def login(self) -> bool:
         """Use a browser to let the user login (QR/Passkey), then copy cookies into requests.Session."""
         self.app.update_status("正在啟動瀏覽器，請完成登入（可掃 QR / 使用 Passkey）。")
@@ -79,6 +104,9 @@ class ReadmooScraper:
                                 self.id_token = c["value"]
                                 logging.info("Extracted idToken from browser cookies.")
                                 break
+                        # Close browser immediately after successful login
+                        self.driver.quit()
+                        self.driver = None
                         return True
 
                     current_url = self.driver.current_url
@@ -87,6 +115,16 @@ class ReadmooScraper:
                         self._sync_cookies_to_session()
                         if self.check_login():
                             self.app.update_status("登入成功！正在取得書單...")
+                            # Extract idToken
+                            id_token_cookie_name = 'CognitoIdentityServiceProvider.1vo6drk6c6ma7htam496pnrkdr.b724da08-2091-70f4-914c-4dc4806a1e1e.idToken'
+                            for c in self.driver.get_cookies():
+                                if c["name"] == id_token_cookie_name:
+                                    self.id_token = c["value"]
+                                    logging.info("Extracted idToken from browser cookies.")
+                                    break
+                            # Close browser
+                            self.driver.quit()
+                            self.driver = None
                             return True
 
                     if (i > 0) and (i % 15 == 0):
