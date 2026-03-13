@@ -47,9 +47,11 @@ class ReadmooScraper:
     def check_login(self) -> bool:
         """Check if login is successful by checking if URL has changed from login page."""
         current_url = self.driver.current_url
+        logging.info(f"check_login: current_url={current_url}, login_url={self.login_url}")
         if current_url != self.login_url:
-            logging.info("URL changed from login page, assuming login successful.")
+            logging.info("URL changed, login successful.")
             return True
+        logging.info("URL not changed, login not detected.")
         return False
 
     def login(self) -> bool:
@@ -78,7 +80,9 @@ class ReadmooScraper:
                 try:
                     # Sync cookies periodically so we can use them for API checks
                     self._sync_cookies_to_session()
+                    logging.info(f"Login check iteration {i}, checking login...")
                     if self.check_login():
+                        logging.info("Login detected, proceeding to close browser.")
                         self.app.update_status("登入成功！正在取得書單...")
                         # Extract idToken before quitting browser
                         id_token_cookie_name = 'CognitoIdentityServiceProvider.1vo6drk6c6ma7htam496pnrkdr.b724da08-2091-70f4-914c-4dc4806a1e1e.idToken'
@@ -93,10 +97,12 @@ class ReadmooScraper:
                         return True
 
                     current_url = self.driver.current_url
+                    logging.info(f"Current URL: {current_url}")
                     if "#/library" in current_url or "/library" in current_url:
                         # sometimes the URL changes after login even though cookies are not yet valid
                         self._sync_cookies_to_session()
                         if self.check_login():
+                            logging.info("Login detected via library URL.")
                             self.app.update_status("登入成功！正在取得書單...")
                             # Extract idToken
                             id_token_cookie_name = 'CognitoIdentityServiceProvider.1vo6drk6c6ma7htam496pnrkdr.b724da08-2091-70f4-914c-4dc4806a1e1e.idToken'
