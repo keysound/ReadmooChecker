@@ -4,6 +4,9 @@ from typing import Any, Dict, List
 
 import requests
 from selenium import webdriver
+from selenium.webdriver.edge.service import Service
+from selenium.webdriver.edge.options import Options
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.common.exceptions import WebDriverException
 
 
@@ -48,10 +51,17 @@ class ReadmooScraper:
         logging.info("Starting browser for login...")
 
         try:
-            self.driver = webdriver.Edge()
+            options = Options()
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+
+            driver_path = r"d:\Development\ReadmooChecker\msedgedriver.exe"
+            service = Service(driver_path)
+            self.driver = webdriver.Edge(service=service, options=options)
         except WebDriverException as e:
             logging.error("Failed to start Edge WebDriver.", exc_info=True)
-            self.app.update_status("啟動瀏覽器失敗，請確認 msedgedriver.exe 可用。", error=True)
+            self.app.update_status("啟動瀏覽器失敗，請確認 msedgedriver.exe 位於專案目錄。", error=True)
             return False
 
         try:
