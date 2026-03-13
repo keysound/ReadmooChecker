@@ -45,27 +45,20 @@ class ReadmooScraper:
         self.session.cookies = jar
 
     def check_login(self) -> bool:
-        """Check if login is successful by checking for id_token or API access."""
-        # First check for id_token
+        """Check if login is successful by checking URL or id_token."""
+        # Check for id_token
         id_token_cookie_name = 'CognitoIdentityServiceProvider.1vo6drk6c6ma7htam496pnrkdr.b724da08-2091-70f4-914c-4dc4806a1e1e.idToken'
         for c in self.driver.get_cookies():
             if c["name"] == id_token_cookie_name and c["value"]:
                 logging.info("Found id_token, login successful.")
                 return True
 
-        # Fallback: test API
-        try:
-            headers = self.session.headers.copy()
-            test_url = "https://new-read.readmoo.com/api/me/readings?page=1&per_page=1"
-            res = requests.get(test_url, headers=headers, cookies=self.session.cookies, timeout=10)
-            if res.status_code == 200:
-                data = res.json()
-                if isinstance(data, dict) and data.get('status') != 'error_login':
-                    return True
-                elif 'included' in data:
-                    return True
-        except Exception as e:
-            logging.debug(f"Login check failed: {e}")
+        # Check URL change
+        current_url = self.driver.current_url
+        if "readmoo.com" in current_url and "login" not in current_url:
+            logging.info("URL changed, assuming login successful.")
+            return True
+
         return False
 
     def login(self) -> bool:
