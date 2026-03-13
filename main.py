@@ -31,6 +31,12 @@ class ReadmooCheckerApp(tk.Tk):
         self.fetch_button = ttk.Button(control_frame, text="開始擷取書單", command=self.fetch_books)
         self.fetch_button.pack(side=tk.LEFT, padx=5)
 
+        # Sort option
+        ttk.Label(control_frame, text="排序方式:").pack(side=tk.LEFT, padx=5)
+        self.sort_var = tk.StringVar(value="title")
+        self.sort_combo = ttk.Combobox(control_frame, textvariable=self.sort_var, values=["書名", "作者"], state="readonly", width=10)
+        self.sort_combo.pack(side=tk.LEFT, padx=5)
+
         self.status_label = ttk.Label(control_frame, text="點擊按鈕後會開啟瀏覽器讓您登入（支援 QR/Passkey）")
         self.status_label.pack(side=tk.LEFT, padx=5)
 
@@ -72,10 +78,11 @@ class ReadmooCheckerApp(tk.Tk):
                 logging.info("Login successful, getting books.")
                 books = self.scraper_instance.get_books()
 
-                # Sort the books by title (default string sort, not by stroke order)
+                # Sort the books based on user selection
+                sort_key = "title" if self.sort_var.get() == "書名" else "author"
                 self.update_status("正在排序書單...")
-                logging.info("Sorting books by title.")
-                books.sort(key=lambda book: book['title'])
+                logging.info(f"Sorting books by {sort_key}.")
+                books.sort(key=lambda book: book[sort_key])
 
                 self.update_status(f"擷取完成！共找到 {len(books)} 本書。")
                 self.populate_tree(books)

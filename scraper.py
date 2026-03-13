@@ -20,7 +20,7 @@ class ReadmooScraper:
 
         self.session = requests.Session()
         self.login_url = "https://member.readmoo.com/login/"
-        self.readings_url = "https://new-read.readmoo.com/api/me/readings?page=1&per_page=100"
+        self.readings_url = "https://new-read.readmoo.com/api/me/readings?page=1&per_page=1000"
         self.session.headers.update({
             "User-Agent": "ReadmooChecker/1.0",
             "Accept": "application/json, text/plain, */*",
