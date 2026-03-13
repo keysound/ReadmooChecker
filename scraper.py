@@ -20,7 +20,6 @@ class ReadmooScraper:
 
         self.session = requests.Session()
         self.login_url = "https://member.readmoo.com/login/"
-        self.readings_url = "https://new-read.readmoo.com/api/me/readings?page=1&per_page=1000"
         self.session.headers.update({
             "User-Agent": "ReadmooChecker/1.0",
             "Accept": "application/json, text/plain, */*",
@@ -122,7 +121,6 @@ class ReadmooScraper:
     def get_books(self) -> List[Dict[str, str]]:
         self.app.update_status("正在取得已購書清單...")
         logging.info("Fetching readings API...")
-        logging.info("get_books method called")
 
         # Add Authorization header with idToken
         if self.id_token:
@@ -131,58 +129,51 @@ class ReadmooScraper:
         else:
             logging.warning("idToken not available.")
 
-        try:
-            res = self.session.get(self.readings_url, timeout=20)
-            logging.info(f"API response status: {res.status_code}")
-            logging.info(f"Response headers: {dict(res.headers)}")
-            logging.info(f"Request cookies: {dict(self.session.cookies)}")
-            res.raise_for_status()
-            logging.info(f"Response text: {res.text}")
-            data = res.json()
-            logging.info(f"Parsed data: {data}")
-        except Exception as e:
-            logging.error(f"Failed to fetch readings: {e}", exc_info=True)
-            self.app.update_status("無法取得書單，請稍後再試。", error=True)
-            return []
-
-        # Debug: print the raw response text and data structure
-        logging.info(f"DEBUG: Raw API response text: {res.text}")
-        logging.debug(f"Raw API response: {data}")
-        logging.info(f"DEBUG: Raw API response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
-
-        # Check if response has 'data' and 'included' keys
-        if 'data' in data and 'included' in data:
-            included = data.get("included") or []
-        elif 'included' in data:
-            included = data.get("included") or []
-        elif isinstance(data, list):
-            # If data is a list of books directly
-            included = data
-        else:
-            # Empty or unknown structure
-            included = []
-            logging.info(f"DEBUG: Unexpected response structure: {data}")
-
-        lookup: Dict[tuple, Any] = {}
-        for item in included:
-            lookup[(item.get("type"), item.get("id"))] = item
-        lookup: Dict[tuple, Any] = {}
-        for item in included:
-            lookup[(item.get("type"), item.get("id"))] = item
-
         books: List[Dict[str, str]] = []
-        for item in included:
-            item_type = item.get("type", "")
-            logging.debug(f"Processing item type: {item_type}, id: {item.get('id')}")
-            if "book" not in item_type:
-                continue
+        page = 1
+        per_page = 100
 
-            title = item.get("title", "標題不明").strip()
-            author = item.get("author", "作者不明").strip()
-            books.append({"title": title, "author": author})
+        while True:
+            url = f"https://new-read.readmoo.com/api/me/readings?page={page}&per_page={per_page}"
+            logging.info(f"Fetching page {page}...")
 
-        logging.info(f"DEBUG: Books extracted: {books}")
-        logging.info(f"Extracted {len(books)} books from API.")
+            try:
+                res = self.session.get(url, timeout=20)
+                logging.info(f"API response status: {res.status_code}")
+                res.raise_for_status()
+                data = res.json()
+                logging.info(f"Parsed data for page {page}: {data}")
+            except Exception as e:
+                logging.error(f"Failed to fetch readings page {page}: {e}", exc_info=True)
+                self.app.update_status("無法取得書單，請稍後再試。", error=True)
+                return books  # Return what we have so far
+
+            # Parse included
+            if 'data' in data and 'included' in data:
+                included = data.get("included") or []
+            elif 'included' in data:
+                included = data.get("included") or []
+            elif isinstance(data, list):
+                included = data
+            else:
+                included = []
+
+            logging.info(f"Page {page}: found {len(included)} items")
+
+            for item in included:
+                item_type = item.get("type", "")
+                if "book" not in item_type:
+                    continue
+                title = item.get("title", "標題不明").strip()
+                author = item.get("author", "作者不明").strip()
+                books.append({"title": title, "author": author})
+
+            # If less than per_page, no more pages
+            if len(included) < per_page:
+                break
+            page += 1
+
+        logging.info(f"Total books extracted: {len(books)}")
         return books
 
     def quit(self):
