@@ -8,6 +8,7 @@ from requests.cookies import RequestsCookieJar
 from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
 from selenium.common.exceptions import WebDriverException
+from urllib.parse import urlparse
 
 
 class ReadmooScraper:
@@ -152,7 +153,13 @@ fetch(requestUrl, {
         try:
             current_url = self.driver.current_url
             logging.info(f"check_login: current_url={current_url}")
-            if "library" in current_url or ("readmoo.com" in current_url and "auth" not in current_url):
+            parsed = urlparse(current_url)
+            host = parsed.hostname or ""
+            path = parsed.path or ""
+            is_readmoo_host = host == "readmoo.com" or host.endswith(".readmoo.com")
+            has_library_in_path = "library" in path
+            on_auth_path = "auth" in path
+            if has_library_in_path or (is_readmoo_host and not on_auth_path):
                 logging.info("Login successful, URL indicates completion.")
                 return True
             logging.debug("Login not detected, still on auth page.")
