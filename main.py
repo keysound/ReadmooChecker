@@ -44,9 +44,11 @@ class ReadmooCheckerApp(tk.Tk):
         results_frame = ttk.LabelFrame(main_frame, text="已購書單", padding="10")
         results_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        self.tree = ttk.Treeview(results_frame, columns=("title", "author"), show="headings")
+        self.tree = ttk.Treeview(results_frame, columns=("index", "title", "author"), show="headings")
+        self.tree.heading("index", text="序號")
         self.tree.heading("title", text="書名")
         self.tree.heading("author", text="作者")
+        self.tree.column("index", width=70, anchor=tk.E, stretch=False)
         self.tree.column("title", width=500)
         self.tree.column("author", width=200)
 
@@ -104,9 +106,9 @@ class ReadmooCheckerApp(tk.Tk):
         def _insert():
             logging.info(f"DEBUG: Populating tree with {len(books)} books.")
             logging.info(f"Populating tree with {len(books)} books.")
-            for book in books:
+            for index, book in enumerate(books, start=1):
                 logging.info(f"DEBUG: Inserting book: {book}")
-                self.tree.insert("", tk.END, values=(book['title'], book['author']))
+                self.tree.insert("", tk.END, values=(index, book['title'], book['author']))
         self.after(0, _insert)
 
     def update_status(self, text, error=False):
