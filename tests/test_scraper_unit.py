@@ -125,6 +125,8 @@ def test_is_logged_in_api_handles_exceptions(scraper, monkeypatch):
         ("https://readmoo.com/library", True),
         ("https://readmoo.com/home", True),
         ("https://next.readmoo.com/zh-TW/auth/signin", False),
+        ("https://member.readmoo.com/#/auth/signin", False),
+        ("https://readmoo.com/#/library", True),
     ],
 )
 def test_check_login_url_rules(scraper, url, expected):

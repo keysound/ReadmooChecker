@@ -156,9 +156,11 @@ fetch(requestUrl, {
             parsed = urlparse(current_url)
             host = parsed.hostname or ""
             path = parsed.path or ""
+            fragment = parsed.fragment or ""
+            route_text = f"{path}#{fragment}" if fragment else path
             is_readmoo_host = host == "readmoo.com" or host.endswith(".readmoo.com")
-            has_library_in_path = "library" in path
-            on_auth_path = "auth" in path
+            has_library_in_path = "library" in route_text
+            on_auth_path = "auth" in route_text
             if has_library_in_path or (is_readmoo_host and not on_auth_path):
                 logging.info("Login successful, URL indicates completion.")
                 return True
