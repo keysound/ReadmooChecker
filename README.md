@@ -13,7 +13,9 @@ A small GUI tool to fetch your purchased books from Readmoo using Readmoo's hidd
 - Python 3.10+
 - Dependencies:
   - `requests`
+  - `selenium`
   - `beautifulsoup4` (kept for compatibility, but not strictly required)
+  - `pytest` (for unit tests)
 
 ## Setup
 
@@ -32,6 +34,23 @@ python main.py
 ```
 
 Click **開始擷取書單** and complete the login in the browser window.
+
+## Testing
+
+Run all unit tests:
+
+```sh
+pytest -q tests
+```
+
+Run scraper-only tests:
+
+```sh
+pytest -q tests/test_scraper_unit.py
+```
+
+Detailed testing guide:
+- `TESTING.md`
 
 ## Notes
 

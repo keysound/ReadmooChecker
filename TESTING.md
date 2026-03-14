@@ -75,6 +75,12 @@ CI 設定：
 - 瀏覽器策略失敗時 fallback 至 requests
 - requests 路徑遇連續重複頁會觸發保護停止
 
+9. get_books 重構後可測責任邊界
+- `_fetch_books_via_browser`：瀏覽器路徑流程
+- `_fetch_books_via_requests`：requests fallback 流程
+- `_append_books_from_items`：單頁資料累積與去重
+- `_update_fetch_status`：進度訊息更新
+
 ### 3.2 Main 視窗測試
 
 檔案：[tests/test_main_unit.py](tests/test_main_unit.py)
@@ -142,5 +148,5 @@ Workflow 檔案：[.github/workflows/pytest.yml](.github/workflows/pytest.yml)
 
 建議後續：
 1. 增加一個可選的整合測試模式（手動觸發，不納入 CI）
-2. 為 get_books 再拆分更小函式，降低 mock 複雜度並提升可讀性
+2. (已完成) get_books 已拆分為較小函式，mock 複雜度已降低
 3. 針對錯誤情境（timeout、API schema 改變）增加更多回歸測試

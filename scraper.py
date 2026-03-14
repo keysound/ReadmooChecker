@@ -251,109 +251,100 @@ fetch(requestUrl, {
         except Exception:
             return False
 
-    def get_books(self) -> List[Dict[str, str]]:
-        self.app.update_status("正在取得已購書清單...")
-        logging.info("Fetching readings API...")
-
-        # Add Authorization header with idToken
-        if self.id_token:
-            self.session.headers['Authorization'] = f'Bearer {self.id_token}'
-            logging.info("Added Authorization header with idToken.")
+    def _update_fetch_status(self, page_number: int, current_count: int, total_hint: Optional[int] = None):
+        if total_hint is not None:
+            self.app.update_status(
+                f"正在取得已購書清單（第 {page_number} 頁，已累積 {current_count}/{total_hint} 本）..."
+            )
         else:
-            logging.warning("idToken not available.")
+            self.app.update_status(
+                f"正在取得已購書清單（第 {page_number} 頁，已累積 {current_count} 本）..."
+            )
 
-        # The browser endpoint currently returns up to 1000 items even when a
-        # smaller per_page is requested. Using 1000 here avoids 900-item overlap
-        # windows that would otherwise turn a 4-page fetch into ~25 pages.
-        browser_per_page = 1000
-        max_pages = 100
+    def _append_books_from_items(
+        self,
+        items: List[Dict[str, Any]],
+        books: List[Dict[str, str]],
+        seen_ids: set[str],
+    ) -> int:
+        added = 0
+        for item in items:
+            item_type = item.get("type", "")
+            if "book" not in item_type:
+                continue
 
-        def update_fetch_status(page_number: int, current_count: int, total_hint: Optional[int] = None):
-            if total_hint is not None:
-                self.app.update_status(
-                    f"正在取得已購書清單（第 {page_number} 頁，已累積 {current_count}/{total_hint} 本）..."
-                )
-            else:
-                self.app.update_status(
-                    f"正在取得已購書清單（第 {page_number} 頁，已累積 {current_count} 本）..."
-                )
+            item_id = item.get("id")
+            if item_id and item_id in seen_ids:
+                continue
+            if item_id:
+                seen_ids.add(item_id)
 
-        if self.driver:
-            try:
-                self.app.update_status("正在透過瀏覽器工作階段取得書單...")
-                detected = self._detect_browser_paging_strategy(browser_per_page)
-                if detected:
-                    strategy_name, builder, first_payload = detected
-                    books: List[Dict[str, str]] = []
-                    seen_ids: set[str] = set()
+            title = item.get("title", "標題不明") or "標題不明"
+            author = item.get("author", "作者不明") or "作者不明"
+            books.append({"title": title.strip(), "author": author.strip()})
+            added += 1
+        return added
 
-                    for page in range(1, max_pages + 1):
-                        payload = first_payload if page == 1 else self._browser_fetch_payload(builder(page))
-                        included = self._extract_included_items(payload)
-                        total_hint = payload.get("total") if isinstance(payload, dict) and isinstance(payload.get("total"), int) else None
-                        logging.info(
-                            f"Browser fetch page {page} using {strategy_name}: discovered {len(included)} items"
-                        )
-
-                        page_new_books = 0
-                        for item in included:
-                            item_type = item.get("type", "")
-                            if "book" not in item_type:
-                                continue
-
-                            item_id = item.get("id")
-                            if item_id and item_id in seen_ids:
-                                continue
-                            if item_id:
-                                seen_ids.add(item_id)
-
-                            title = item.get("title", "標題不明") or "標題不明"
-                            author = item.get("author", "作者不明") or "作者不明"
-                            books.append({"title": title.strip(), "author": author.strip()})
-                            page_new_books += 1
-
-                        if total_hint is not None:
-                            logging.info(f"Browser payload total hint: {total_hint}")
-                        update_fetch_status(page, len(books), total_hint)
-                        if total_hint is not None:
-                            if len(books) >= total_hint:
-                                logging.info("Collected all books based on browser payload total count.")
-                                break
-
-                        if page_new_books == 0:
-                            logging.info("Browser pagination produced no new books; stopping.")
-                            break
-
-                        if page_new_books < browser_per_page:
-                            logging.info("Browser pagination returned a short page; assuming end of list.")
-                            break
-
-                    logging.info(f"Total books extracted via browser context: {len(books)}")
-                    if books:
-                        return books
-                else:
-                    logging.warning("Could not detect a working browser paging strategy; falling back to requests.")
-            except Exception as exc:
-                logging.error(f"Browser-context fetch failed; falling back to requests: {exc}", exc_info=True)
-        else:
+    def _fetch_books_via_browser(self, per_page: int, max_pages: int) -> Optional[List[Dict[str, str]]]:
+        if not self.driver:
             logging.warning("Browser driver is unavailable during get_books; browser-context fetch was skipped.")
+            return None
 
-        books = []
-        page = 1
-        per_page = 1000  # Fetch as many as possible per request to reduce the number of calls
+        try:
+            self.app.update_status("正在透過瀏覽器工作階段取得書單...")
+            detected = self._detect_browser_paging_strategy(per_page)
+            if not detected:
+                logging.warning("Could not detect a working browser paging strategy; falling back to requests.")
+                return None
+
+            strategy_name, builder, first_payload = detected
+            books: List[Dict[str, str]] = []
+            seen_ids: set[str] = set()
+
+            for page in range(1, max_pages + 1):
+                payload = first_payload if page == 1 else self._browser_fetch_payload(builder(page))
+                included = self._extract_included_items(payload)
+                total_hint = payload.get("total") if isinstance(payload, dict) and isinstance(payload.get("total"), int) else None
+                logging.info(
+                    f"Browser fetch page {page} using {strategy_name}: discovered {len(included)} items"
+                )
+
+                page_new_books = self._append_books_from_items(included, books, seen_ids)
+
+                if total_hint is not None:
+                    logging.info(f"Browser payload total hint: {total_hint}")
+                self._update_fetch_status(page, len(books), total_hint)
+
+                if total_hint is not None and len(books) >= total_hint:
+                    logging.info("Collected all books based on browser payload total count.")
+                    break
+
+                if page_new_books == 0:
+                    logging.info("Browser pagination produced no new books; stopping.")
+                    break
+
+                if page_new_books < per_page:
+                    logging.info("Browser pagination returned a short page; assuming end of list.")
+                    break
+
+            logging.info(f"Total books extracted via browser context: {len(books)}")
+            return books if books else None
+        except Exception as exc:
+            logging.error(f"Browser-context fetch failed; falling back to requests: {exc}", exc_info=True)
+            return None
+
+    def _fetch_books_via_requests(self, per_page: int, max_pages: int) -> List[Dict[str, str]]:
+        books: List[Dict[str, str]] = []
         seen_ids: set[str] = set()
-
-        # Some API endpoints use cursor/offset-style pagination instead of page numbers.
-        # We'll detect those patterns and switch to offset-based fetching if needed.
+        page = 1
         offset = 0
         use_offset = False
         consecutive_duplicate_pages = 0
 
         logging.info(f"Starting book fetch (id_token set: {bool(self.id_token)})")
 
-        while page <= 50:
+        while page <= max_pages:
             prev_total_books = len(books)
-
             params = {"per_page": per_page}
             if use_offset:
                 params["offset"] = offset
@@ -363,12 +354,10 @@ fetch(requestUrl, {
             logging.info(f"Fetching page {page}... (params={params})")
 
             try:
-                # Use a connect+read timeout tuple to avoid hanging indefinitely
                 res = self.session.get(self.readings_url, params=params, timeout=(10, 20))
                 logging.info(f"API response status: {res.status_code}")
                 res.raise_for_status()
                 data = res.json()
-                # Avoid logging huge payloads (contains full book metadata)
                 if isinstance(data, dict):
                     logging.debug(f"Parsed data for page {page}: keys={list(data.keys())}")
                     pagination = data.get("pagination")
@@ -378,34 +367,15 @@ fetch(requestUrl, {
             except Exception as e:
                 logging.error(f"Failed to fetch readings page {page}: {e}", exc_info=True)
                 self.app.update_status("無法取得書單，請稍後再試。", error=True)
-                return books  # Return what we have so far
+                return books
 
             included = self._extract_included_items(data)
-
             total_hint = data.get("total") if isinstance(data, dict) and isinstance(data.get("total"), int) else None
             logging.info(f"Page {page}: discovered {len(included)} items")
 
-            # Extract books from the API item list
-            for item in included:
-                if not isinstance(item, dict):
-                    continue
-                item_type = item.get("type", "")
-                if "book" not in item_type:
-                    continue
+            self._append_books_from_items(included, books, seen_ids)
+            self._update_fetch_status(page, len(books), total_hint)
 
-                item_id = item.get("id")
-                if item_id and item_id in seen_ids:
-                    continue
-                if item_id:
-                    seen_ids.add(item_id)
-
-                title = item.get("title", "標題不明") or "標題不明"
-                author = item.get("author", "作者不明") or "作者不明"
-                books.append({"title": title.strip(), "author": author.strip()})
-
-            update_fetch_status(page, len(books), total_hint)
-
-            # Detect if we got any new books this page
             new_books = len(books) - prev_total_books
             if new_books == 0:
                 consecutive_duplicate_pages += 1
@@ -416,20 +386,14 @@ fetch(requestUrl, {
             else:
                 consecutive_duplicate_pages = 0
 
-            # Determine next page or offset using pagination metadata (if available)
             next_page = None
             next_offset = None
             if isinstance(data, dict):
                 pag = data.get("pagination") or {}
                 if isinstance(pag, dict):
-                    # Log pagination metadata on first page to help debug API behavior
                     if page == 1:
                         logging.info(f"Pagination metadata (page 1): {pag!r}")
 
-                    # Common patterns:
-                    # - next_page / next
-                    # - page / total_pages
-                    # - offset / limit / total
                     if isinstance(pag.get("next_page"), int):
                         next_page = cast(int, pag.get("next_page"))
                     elif isinstance(pag.get("next"), int):
@@ -444,7 +408,6 @@ fetch(requestUrl, {
                         current_offset = cast(int, pag.get("offset"))
                         limit = cast(int, pag.get("limit"))
                         total = pag.get("total") if isinstance(pag.get("total"), int) else None
-                        # If total is available and we've already collected everything, stop.
                         if total is not None and len(books) >= total:
                             logging.info("Collected all books based on pagination total count.")
                             break
@@ -469,18 +432,35 @@ fetch(requestUrl, {
                 consecutive_duplicate_pages = 0
                 continue
 
-            # Fallback: if fewer items returned than requested, we are at the end
             if len(included) < per_page:
                 logging.info("Reached end of pages (received fewer items than per_page).")
                 break
 
             page += 1
 
-        if page > 50:
+        if page > max_pages:
             logging.warning("Reached maximum page limit while fetching books; stopping to prevent infinite loop.")
 
         logging.info(f"Total books extracted: {len(books)}")
         return books
+
+    def get_books(self) -> List[Dict[str, str]]:
+        self.app.update_status("正在取得已購書清單...")
+        logging.info("Fetching readings API...")
+
+        # Add Authorization header with idToken
+        if self.id_token:
+            self.session.headers['Authorization'] = f'Bearer {self.id_token}'
+            logging.info("Added Authorization header with idToken.")
+        else:
+            logging.warning("idToken not available.")
+
+        browser_per_page = 1000
+        browser_books = self._fetch_books_via_browser(per_page=browser_per_page, max_pages=100)
+        if browser_books is not None:
+            return browser_books
+
+        return self._fetch_books_via_requests(per_page=1000, max_pages=50)
 
     def quit(self):
         """Closes the browser gracefully (if it was opened)."""
