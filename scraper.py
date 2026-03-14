@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import requests
-from selenium import webdriver
+from selenium.webdriver.edge.webdriver import WebDriver as Edge
 from requests.cookies import RequestsCookieJar
 from selenium.webdriver.edge.service import Service
 from selenium.webdriver.edge.options import Options
@@ -14,6 +14,13 @@ from urllib.parse import urlparse
 
 class ReadmooScraper:
     def __init__(self, app, driver_path: Optional[str] = None):
+        """Initialise the scraper.
+
+        Args:
+            app: The GUI application object; must expose ``update_status(text, error=False)``.
+            driver_path: Optional explicit path to ``msedgedriver.exe``. When *None* the
+                driver is located automatically via :meth:`_resolve_driver_path`.
+        """
         logging.info("Initializing ReadmooScraper.")
         self.app = app
         self.driver_path = driver_path
@@ -57,6 +64,12 @@ class ReadmooScraper:
         return None
 
     def _extract_included_items(self, data: Any) -> List[Dict[str, Any]]:
+        """Normalise a raw API payload into a flat list of item dicts.
+
+        Handles the various response shapes returned by the Readmoo API
+        (top-level ``included``, nested ``data.included``, plain ``data`` list,
+        and bare lists).
+        """
         included: List[Dict[str, Any]] = []
         if isinstance(data, dict):
             raw_included = data.get("included")
@@ -74,6 +87,7 @@ class ReadmooScraper:
         return [item for item in included if isinstance(item, dict)]
 
     def _extract_book_ids(self, data: Any) -> List[str]:
+        """Return the string IDs of all book-type items found in a raw API payload."""
         book_ids: List[str] = []
         for item in self._extract_included_items(data):
             item_type = item.get("type", "")
@@ -83,6 +97,20 @@ class ReadmooScraper:
         return book_ids
 
     def _browser_fetch_payload(self, params: Dict[str, Any]) -> Any:
+        """Execute a credentialed ``fetch()`` inside the live browser page and return the JSON payload.
+
+        Uses ``execute_async_script`` so the browser's own session cookies are included
+        automatically, bypassing CORS restrictions that would block a plain ``requests`` call.
+
+        Args:
+            params: Query parameters to append to :attr:`readings_url`.
+
+        Returns:
+            The parsed JSON response body.
+
+        Raises:
+            RuntimeError: If the browser driver is unavailable or the HTTP request fails.
+        """
         if not self.driver:
             raise RuntimeError("Browser driver is not available for in-page fetch.")
 
@@ -125,6 +153,11 @@ fetch(requestUrl, {
         return result.get("data")
 
     def _build_browser_paging_strategies(self, per_page: int) -> List[Tuple[str, Callable[[int], Dict[str, Any]]]]:
+        """Return a list of candidate paging strategies as ``(name, param_builder)`` tuples.
+
+        Each ``param_builder`` is a callable that accepts a 1-based page number and returns
+        the corresponding query-parameter dict for :attr:`readings_url`.
+        """
         return [
             ("page_per_page", lambda page_number: {"page": page_number, "per_page": per_page}),
             ("page_limit", lambda page_number: {"page": page_number, "limit": per_page}),
@@ -134,6 +167,15 @@ fetch(requestUrl, {
         ]
 
     def _detect_browser_paging_strategy(self, per_page: int) -> Optional[Tuple[str, Callable[[int], Dict[str, Any]], Any]]:
+        """Probe the API to discover which pagination strategy it supports.
+
+        Fetches pages 1 and 2 with each candidate strategy and picks the first one
+        that returns distinct, non-empty results on each page.
+
+        Returns:
+            A ``(strategy_name, param_builder, first_page_payload)`` tuple when a
+            working strategy is found, or *None* if all strategies fail.
+        """
         strategies = self._build_browser_paging_strategies(per_page)
         for strategy_name, builder in strategies:
             try:
@@ -158,6 +200,7 @@ fetch(requestUrl, {
         return None
 
     def _sync_cookies_to_session(self):
+        """Copy the current browser cookies into :attr:`session` so requests can reuse the authenticated state."""
         if not self.driver:
             return
 
@@ -203,10 +246,10 @@ fetch(requestUrl, {
             if driver_path:
                 logging.info(f"Using configured Edge driver path: {driver_path}")
                 service = Service(driver_path)
-                self.driver = webdriver.Edge(service=service, options=options)
+                self.driver = Edge(service=service, options=options)
             else:
                 logging.info("No explicit Edge driver path found; using Selenium Manager.")
-                self.driver = webdriver.Edge(options=options)
+                self.driver = Edge(options=options)
         except WebDriverException as e:
             logging.error("Failed to start Edge WebDriver.", exc_info=True)
             self.app.update_status("啟動瀏覽器失敗，請確認 Edge WebDriver 可用（專案內 msedgedriver.exe 或 Selenium Manager）。", error=True)
@@ -284,6 +327,14 @@ fetch(requestUrl, {
             return False
 
     def get_books(self) -> List[Dict[str, str]]:
+        """Fetch the user's entire purchased-book list from the Readmoo API.
+
+        Tries the browser-context path first (using the live authenticated browser session),
+        then falls back to ``requests`` if the browser is unavailable or encounters an error.
+
+        Returns:
+            A list of ``{"title": str, "author": str}`` dicts, one entry per book.
+        """
         self.app.update_status("正在取得已購書清單...")
         logging.info("Fetching readings API...")
 
