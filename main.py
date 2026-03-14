@@ -14,6 +14,7 @@ logging.basicConfig(
 
 class ReadmooCheckerApp(tk.Tk):
     def __init__(self):
+        """Build the main application window with control bar and results treeview."""
         super().__init__()
         self.title("Readmoo 已購書單擷取工具")
         self.geometry("800x600")
@@ -54,12 +55,13 @@ class ReadmooCheckerApp(tk.Tk):
 
         # Scrollbar
         scrollbar = ttk.Scrollbar(results_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
+        self.tree.configure(yscrollcommand=scrollbar.set)
 
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
     def fetch_books(self):
+        """Disable the fetch button, clear the treeview, and start the background scrape thread."""
         # Disable button and clear tree
         self.fetch_button.config(state=tk.DISABLED)
         for i in self.tree.get_children():
@@ -70,6 +72,7 @@ class ReadmooCheckerApp(tk.Tk):
         thread.start()
 
     def _scrape_data(self):
+        """Run the full scrape workflow in a background thread: login → fetch → sort → display."""
         self.update_status("正在啟動瀏覽器並登入 Readmoo...")
         logging.info("Starting scrape process...")
 
@@ -102,6 +105,11 @@ class ReadmooCheckerApp(tk.Tk):
             self.after(0, lambda: self.fetch_button.config(state=tk.NORMAL))
 
     def populate_tree(self, books):
+        """Schedule a treeview refresh on the main thread with an indexed book list.
+
+        Args:
+            books: Ordered list of ``{"title": str, "author": str}`` dicts.
+        """
         # This needs to be called from the main thread
         def _insert():
             logging.info(f"DEBUG: Populating tree with {len(books)} books.")
@@ -112,6 +120,12 @@ class ReadmooCheckerApp(tk.Tk):
         self.after(0, _insert)
 
     def update_status(self, text, error=False):
+        """Schedule a status-label update on the main thread.
+
+        Args:
+            text: The message to display in the status bar.
+            error: When *True*, the label text is rendered in red.
+        """
         # This needs to be called from the main thread
         def _update():
             color = "red" if error else "black"
@@ -119,6 +133,7 @@ class ReadmooCheckerApp(tk.Tk):
         self.after(0, _update)
 
     def on_closing(self):
+        """Handle the window-close event: quit the scraper gracefully, then destroy the Tkinter root."""
         # Ensure browser closes if the GUI window is closed
         logging.info("Closing application.")
         if self.scraper_instance:
