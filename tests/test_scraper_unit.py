@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 
@@ -157,6 +158,38 @@ def test_sync_cookies_to_session(scraper):
 
     assert scraper.session.cookies.get("a") == "1"
     assert scraper.session.cookies.get("b") == "2"
+
+
+def test_resolve_driver_path_prefers_explicit_value(scraper):
+    scraper.driver_path = "C:/custom/msedgedriver.exe"
+    assert scraper._resolve_driver_path() == "C:/custom/msedgedriver.exe"
+
+
+def test_resolve_driver_path_uses_local_file_when_present(scraper, monkeypatch):
+    class FakePath:
+        def __init__(self, _value=""):
+            self.value = _value
+
+        def resolve(self):
+            return self
+
+        @property
+        def parent(self):
+            return self
+
+        def __truediv__(self, _other):
+            return self
+
+        def exists(self):
+            return True
+
+        def __str__(self):
+            return "D:/repo/msedgedriver.exe"
+
+    monkeypatch.setattr("scraper.Path", FakePath)
+    scraper.driver_path = None
+
+    assert scraper._resolve_driver_path() == "D:/repo/msedgedriver.exe"
 
 
 class FakeResponse:

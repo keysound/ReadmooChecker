@@ -1,5 +1,6 @@
 import logging
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import requests
@@ -37,6 +38,23 @@ class ReadmooScraper:
         })
         # API endpoint used to verify login and to fetch the book list.
         self.readings_url = "https://new-read.readmoo.com/api/me/readings"
+
+    def _resolve_driver_path(self) -> Optional[str]:
+        """Resolve Edge driver path.
+
+        Priority:
+        1. User-provided driver_path
+        2. msedgedriver.exe in project directory (same folder as this file)
+        3. None (let Selenium Manager handle it)
+        """
+        if self.driver_path:
+            return self.driver_path
+
+        local_driver = Path(__file__).resolve().parent / "msedgedriver.exe"
+        if local_driver.exists():
+            return str(local_driver)
+
+        return None
 
     def _extract_included_items(self, data: Any) -> List[Dict[str, Any]]:
         included: List[Dict[str, Any]] = []
@@ -181,12 +199,17 @@ fetch(requestUrl, {
             # Show the "controlled by automated test software" banner so it's clear
             # the browser is being driven by Selenium.
             # (Removing the automation-hiding flags can help debugging login flow.)
-            driver_path = r"d:\Development\ReadmooChecker\msedgedriver.exe"
-            service = Service(driver_path)
-            self.driver = webdriver.Edge(service=service, options=options)
+            driver_path = self._resolve_driver_path()
+            if driver_path:
+                logging.info(f"Using configured Edge driver path: {driver_path}")
+                service = Service(driver_path)
+                self.driver = webdriver.Edge(service=service, options=options)
+            else:
+                logging.info("No explicit Edge driver path found; using Selenium Manager.")
+                self.driver = webdriver.Edge(options=options)
         except WebDriverException as e:
             logging.error("Failed to start Edge WebDriver.", exc_info=True)
-            self.app.update_status("啟動瀏覽器失敗，請確認 msedgedriver.exe 位於專案目錄。", error=True)
+            self.app.update_status("啟動瀏覽器失敗，請確認 Edge WebDriver 可用（專案內 msedgedriver.exe 或 Selenium Manager）。", error=True)
             return False
 
         try:
